@@ -169,20 +169,15 @@ match /authorizedPersonnel/{docId} {
 
     match /inventoryLogs/{docId} {
       allow read: if isAdminOrHigher();
-      allow create, update: if isAdminOrHigher();
-      allow delete: if isAdminOrHigher();
+      allow create: if isAdminOrHigher() || (isSignedIn() && signedInRole() == 'staff personnel');
+      allow update, delete: if isAdminOrHigher();
     }
 
     match /financingApplications/{docId} {
-      allow read: if true;
-      allow create: if isSignedIn();
-      allow update: if isAdminOrHigher() || (isSignedIn() && request.auth.uid == resource.data.applicant.uid);
-      allow delete: if isSuperadmin();
+      allow read, write: if false;
 
       match /messages/{messageId} {
-        allow read: if isAdminOrHigher() || isSignedIn();
-        allow create: if isSignedIn();
-        allow update: if isAdminOrHigher();
+        allow read, write: if false;
       }
     }
 
@@ -195,18 +190,25 @@ match /authorizedPersonnel/{docId} {
     }
 
     match /transactionLogs/{docId} {
-      allow read: if isAdminOrHigher()
-        || (isSignedIn() && (
-          signedInRole() == 'cashier personnel'
-          || signedInRole() == 'staff personnel'
-        ));
-      allow write: if isAdminOrHigher();
+      allow read: if isAdminOrHigher();
+      allow create: if isAdminOrHigher();
+      allow update, delete: if false;
     }
 
-
-    match /deleteArchived/{docId} {
+    match /auditLogs/{docId} {
       allow read: if isAdminOrHigher();
-      allow create, update, delete: if isAdminOrHigher();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /inventoryChangeRequests/{docId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if isAdminOrHigher();
+    }
+
+    match /damagedReturns/{docId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if isAdminOrHigher();
     }
 
     match /deleteArchived/{docId} {

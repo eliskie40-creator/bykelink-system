@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '../../../firebase'
+import { logSystemAuditEvent } from '../../../services/auditLogService'
 import DeleteRoundedIcon from '@mui/icons-material/DeleteRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import CloudUploadRoundedIcon from '@mui/icons-material/CloudUploadRounded'
@@ -10,7 +11,7 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 
 const ITEMS_PER_PAGE = 8
 
-export default function ServiceTypeSection({ isDarkMode }) {
+export default function ServiceTypeSection({ isDarkMode, currentUser = null, currentAccessRole = '' }) {
   const [services, setServices] = useState([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null)
@@ -78,6 +79,19 @@ export default function ServiceTypeSection({ isDarkMode }) {
         createdAt: new Date(),
       })
 
+      await logSystemAuditEvent({
+        module: 'Service',
+        action: 'SERVICE_TYPE_CREATED',
+        summary: `Created service type "${formData.title}"`,
+        targetType: 'service',
+        targetId: newService.id,
+        targetName: formData.title,
+        newData: { title: formData.title, cost: parseFloat(formData.cost), durationMinutes },
+        amount: parseFloat(formData.cost),
+        currentUser,
+        accessRole: currentAccessRole,
+      })
+
       setServices([
         ...services,
         {
@@ -130,6 +144,19 @@ export default function ServiceTypeSection({ isDarkMode }) {
         updatedAt: new Date(),
       })
 
+      await logSystemAuditEvent({
+        module: 'Service',
+        action: 'SERVICE_TYPE_UPDATED',
+        summary: `Updated service type "${formData.title}"`,
+        targetType: 'service',
+        targetId: editingId,
+        targetName: formData.title,
+        newData: { title: formData.title, cost: parseFloat(formData.cost), durationMinutes },
+        amount: parseFloat(formData.cost),
+        currentUser,
+        accessRole: currentAccessRole,
+      })
+
       setServices(
         services.map((s) =>
           s.id === editingId
@@ -160,7 +187,19 @@ export default function ServiceTypeSection({ isDarkMode }) {
   const handleDeleteService = async (id) => {
     if (confirm('Are you sure you want to delete this service?')) {
       try {
+        const deletedService = services.find((s) => s.id === id)
         await deleteDoc(doc(db, 'services', id))
+        await logSystemAuditEvent({
+          module: 'Service',
+          action: 'SERVICE_TYPE_DELETED',
+          summary: `Deleted service type "${deletedService?.title || id}"`,
+          targetType: 'service',
+          targetId: id,
+          targetName: deletedService?.title || id,
+          previousData: deletedService ? { title: deletedService.title, cost: deletedService.cost } : null,
+          currentUser,
+          accessRole: currentAccessRole,
+        })
         setServices(services.filter((s) => s.id !== id))
         setCurrentPage(1)
       } catch (error) {

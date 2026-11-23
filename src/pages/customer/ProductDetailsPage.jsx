@@ -18,7 +18,7 @@ const formatPrice = (value) => {
   }).format(Number.isFinite(amount) ? amount : 0)
 }
 
-export default function ProductDetailsPage({ productId, onSignOut, onNavigateBack, onNavigateToFinancing }) {
+export default function ProductDetailsPage({ productId, onSignOut, onNavigateBack }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [product, setProduct] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -150,7 +150,6 @@ export default function ProductDetailsPage({ productId, onSignOut, onNavigateBac
         {isMenuOpen && (
           <nav className="space-y-2 border-t border-slate-800 px-4 py-3 sm:px-6 lg:hidden">
             <a className="block text-[11px] font-bold uppercase tracking-[0.2em] text-red-600">Details</a>
-            <button onClick={() => onNavigateToFinancing?.(productId)} className="block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400 w-full text-left">Financing</button>
             <a className="block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Service</a>
             <button
               onClick={handleLogout}
@@ -188,11 +187,6 @@ export default function ProductDetailsPage({ productId, onSignOut, onNavigateBac
               <p className="text-white/70 text-lg max-w-lg mb-8">
                 {product.description || 'Premium Yamaha motorcycle designed for performance and reliability.'}
               </p>
-              <div className="flex flex-wrap gap-4">
-                <button onClick={() => onNavigateToFinancing?.(productId)} className="bg-[#e10100] text-white px-8 py-4 font-bold uppercase tracking-widest text-sm hover:bg-[#b20100] transition-all transform active:scale-90">
-                  Apply for Financing
-                </button>
-              </div>
             </div>
 
           </div>
@@ -265,13 +259,12 @@ export default function ProductDetailsPage({ productId, onSignOut, onNavigateBac
                   )}
                 </div>
 
-                {/* Trade-in Card */}
                 <div className="bg-[#e10100] p-1 rounded-lg relative">
                   <div className="bg-slate-900 p-6 rounded-md">
-                    <h3 className="font-black uppercase text-sm mb-2 text-white">Financing Options</h3>
-                    <p className="text-xs text-slate-300 mb-4">Flexible payment plans available for qualified buyers.</p>
-                    <button onClick={() => onNavigateToFinancing?.(productId)} className="w-full bg-[#e10100] hover:bg-[#b20100] text-white py-3 font-bold uppercase text-xs tracking-widest transition-all">
-                      Learn More
+                    <h3 className="font-black uppercase text-sm mb-2 text-white">Showroom Inquiry</h3>
+                    <p className="text-xs text-slate-300 mb-4">Visit our branch or connect with our team for unit availability and showroom assistance.</p>
+                    <button onClick={onNavigateBack} className="w-full bg-[#e10100] hover:bg-[#b20100] text-white py-3 font-bold uppercase text-xs tracking-widest transition-all">
+                      Back to Showroom
                     </button>
                   </div>
                 </div>
@@ -306,9 +299,9 @@ export default function ProductDetailsPage({ productId, onSignOut, onNavigateBac
         <section className="bg-[#e10100] text-white py-20 px-4 sm:px-6 lg:px-8">
           <div className="container mx-auto max-w-2xl text-center">
             <h2 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter mb-6">Ready to ride?</h2>
-            <p className="text-lg mb-8">Connect with our sales experts to explore financing options and schedule a test ride.</p>
-            <button className="bg-white text-[#e10100] px-8 py-4 font-bold uppercase tracking-widest hover:bg-slate-100 transition-all transform active:scale-90">
-              Start Your Journey
+            <p className="text-lg mb-8">Connect with our sales experts to inquire about unit availability and schedule a visit.</p>
+            <button onClick={onNavigateBack} className="bg-white text-[#e10100] px-8 py-4 font-bold uppercase tracking-widest hover:bg-slate-100 transition-all transform active:scale-90">
+              Explore Showroom
             </button>
           </div>
         </section>
@@ -320,13 +313,12 @@ export default function ProductDetailsPage({ productId, onSignOut, onNavigateBac
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.24em] text-red-600">BYKELINK</p>
-              <p className="mt-3 max-w-xs text-sm text-slate-400">Premium Yamaha motorcycles with expert service and flexible financing.</p>
+              <p className="mt-3 max-w-xs text-sm text-slate-400">Premium Yamaha motorcycles with expert service and genuine parts.</p>
             </div>
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Quick Links</p>
               <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                <li><a href="#" className="hover:text-red-600 transition">Showroom</a></li>
-                <li><button onClick={() => onNavigateToFinancing?.(productId)} className="hover:text-red-600 transition">Financing</button></li>
+                <li><button onClick={onNavigateBack} className="hover:text-red-600 transition">Showroom</button></li>
                 <li><a href="#" className="hover:text-red-600 transition">Service</a></li>
               </ul>
             </div>

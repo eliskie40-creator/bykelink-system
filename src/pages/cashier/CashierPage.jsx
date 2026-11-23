@@ -3,6 +3,7 @@ import { httpsCallable } from 'firebase/functions'
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 import './CashierPage.css'
 import { db, functions } from '../../firebase'
+import { buildInvoiceData } from '../../services/posInvoiceService'
 import CashierLayout from './CashierLayout'
 import CashierTopbar from './components/CashierTopbar'
 import BarcodeScanner from './components/BarcodeScanner'
@@ -39,6 +40,14 @@ export default function CashierPage({
   const [isPriceCheckOpen, setIsPriceCheckOpen] = useState(false)
   const [notes, setNotes] = useState('')
   const [transactionId, setTransactionId] = useState('')
+  const [saleError, setSaleError] = useState('')
+  const [customerName, setCustomerName] = useState('Walk-in Customer')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [customerVehicle, setCustomerVehicle] = useState('')
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
+  const [draftCustomerName, setDraftCustomerName] = useState('')
+  const [draftCustomerPhone, setDraftCustomerPhone] = useState('')
+  const [draftCustomerVehicle, setDraftCustomerVehicle] = useState('')
 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, 'inventory')), (snapshot) => {
@@ -91,7 +100,7 @@ export default function CashierPage({
           snapshot.docs
             .map((serviceDoc) => {
               const data = serviceDoc.data()
-              const fee = Number(data.cost ?? data.fee ?? 0)
+              const fee = Number(data.cost ?? data.fee ?? data.price ?? data.amount ?? 0)
 
               return {
                 id: serviceDoc.id,
@@ -123,6 +132,10 @@ export default function CashierPage({
 
         setTransactionLogs(nextLogs)
       },
+      (error) => {
+        console.warn('Transaction logs stream unavailable for this role:', error?.code || error?.message)
+        setTransactionLogs([])
+      },
     )
 
     return unsubscribe
@@ -153,11 +166,37 @@ export default function CashierPage({
     setDraftQty(1)
     setReceipt(null)
     setNotes('')
+    setCustomerName('Walk-in Customer')
+    setCustomerPhone('')
+    setCustomerVehicle('')
 
     const nextId = await requestTransactionId()
     if (nextId) {
       setTransactionId(nextId)
     }
+  }
+
+  const openCustomerModal = () => {
+    setDraftCustomerName(customerName === 'Walk-in Customer' ? '' : customerName)
+    setDraftCustomerPhone(customerPhone)
+    setDraftCustomerVehicle(customerVehicle)
+    setIsCustomerModalOpen(true)
+  }
+
+  const handleApplyCustomer = (e) => {
+    if (e) e.preventDefault()
+    const trimmed = draftCustomerName.trim()
+    setCustomerName(trimmed || 'Walk-in Customer')
+    setCustomerPhone(draftCustomerPhone.trim())
+    setCustomerVehicle(draftCustomerVehicle.trim())
+    setIsCustomerModalOpen(false)
+  }
+
+  const handleResetToWalkIn = () => {
+    setCustomerName('Walk-in Customer')
+    setCustomerPhone('')
+    setCustomerVehicle('')
+    setIsCustomerModalOpen(false)
   }
 
   const catalogItems = useMemo(() => {
@@ -228,6 +267,7 @@ export default function CashierPage({
           id: item.id,
           name: item.name,
           sku: item.sku,
+          type: 'product',
           qty: 1,
           unitPrice: item.price || 0,
         },
@@ -276,7 +316,11 @@ export default function CashierPage({
     setQtyEditorItem(null)
   }
 
-  const addServiceToCart = (service) => {
+  const addServiceToCart = async (service) => {
+    if (!transactionId) {
+      await requestTransactionId()
+    }
+
     setCartItems((current) => {
       const serviceCartId = `service-${service.id}`
       const existing = current.find((entry) => entry.id === serviceCartId)
@@ -293,6 +337,7 @@ export default function CashierPage({
           id: serviceCartId,
           name: service.name,
           sku: 'SERVICE',
+          type: 'service',
           qty: 1,
           unitPrice: service.fee,
         },
@@ -373,38 +418,21 @@ export default function CashierPage({
   const handleReprintReceipt = async (log) => {
     if (!log) return
 
-    const receiptData = {
-      id: log.transactionId || log.id,
-      timestamp: log.timestamp || new Date(log.createdAt || Date.now()).toLocaleString('en-PH', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      }),
-      customer: log.customer || 'Walk-in Customer',
-      paymentMethod: log.paymentMethod || 'Cash',
-      subtotal: Number(log.subtotal || 0),
-      discount: Number(log.discount || 0),
-      vat: Number(log.vat || 0),
-      grandTotal: Number(log.grandTotal || 0),
-      amountTendered: Number(log.amountTendered || 0),
-      change: Number(log.change || 0),
-      notes: log.notes || '',
-      items: Array.isArray(log.items)
-        ? log.items.map((item) => ({
-            id: item.id || `${log.transactionId}-${item.name}`,
-            item: item.name || item.item || 'Item',
-            qty: Number(item.qty || 0),
-            unitPrice: Number(item.unitPrice || 0),
-            subtotal: Number(item.subtotal || 0),
-          }))
-        : [],
-    }
+    const invoiceData = buildInvoiceData({
+      transaction: log,
+      cashierUser: currentUser,
+      isReprint: true,
+    })
+
+    // Open unified sales invoice modal immediately in UI
+    setReceipt(invoiceData)
 
     try {
       const printReceipt = httpsCallable(functions, 'printReceipt')
-      const response = await printReceipt({ receipt: receiptData })
-      console.log('[Cashier] Reprint receipt response received', response?.data)
+      const response = await printReceipt({ receipt: invoiceData })
+      console.log('[Cashier] Reprint invoice response received', response?.data)
     } catch (error) {
-      console.error('Failed to reprint receipt:', error)
+      console.warn('[Cashier] Backend printer skipped or offline:', error?.message)
     }
   }
 
@@ -415,21 +443,57 @@ export default function CashierPage({
     { key: 'ESC', label: 'Cancel', icon: '✕', onClick: cancelTransaction },
   ]
 
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const tag = event.target?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+
+      if (event.key === 'F2') {
+        event.preventDefault()
+        setIsBarcodeScannerOpen(true)
+      } else if (event.key === 'F3') {
+        event.preventDefault()
+        setIsLogsOpen(true)
+      } else if (event.key === 'F4') {
+        event.preventDefault()
+        openCustomerModal()
+      } else if (event.key === 'F8') {
+        event.preventDefault()
+        setIsPriceCheckOpen(true)
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        if (isCustomerModalOpen) setIsCustomerModalOpen(false)
+        else if (isLogsOpen) setIsLogsOpen(false)
+        else if (isBarcodeScannerOpen) setIsBarcodeScannerOpen(false)
+        else if (isPriceCheckOpen) setIsPriceCheckOpen(false)
+        else if (receipt) setReceipt(null)
+        else cancelTransaction()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isCustomerModalOpen, isLogsOpen, isBarcodeScannerOpen, isPriceCheckOpen, receipt, customerName, customerPhone, customerVehicle])
+
   const finalizeSale = async () => {
     if (!canCompleteSale || isCompletingSale) return
 
     setIsCompletingSale(true)
+    setSaleError('')
 
     try {
-      const finalTransactionId = transactionId || (await requestTransactionId())
+      const generatedFallbackId = `TX-${Date.now().toString().slice(-8)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+      const finalTransactionId = transactionId || (await requestTransactionId()) || generatedFallbackId
 
-      const receiptPayload = {
-        id: finalTransactionId || 'TX-PENDING',
+      const rawReceiptPayload = {
+        id: finalTransactionId,
         timestamp: new Date().toLocaleString('en-PH', {
           dateStyle: 'medium',
           timeStyle: 'short',
         }),
-        customer: 'Walk-in Customer',
+        customer: customerName,
+        customerPhone: customerPhone || null,
+        customerVehicle: customerVehicle || null,
         paymentMethod: paymentMethodLabel,
         paymentMethodKey: selectedPaymentMethod,
         subtotal,
@@ -442,6 +506,13 @@ export default function CashierPage({
         items: transactionItems,
       }
 
+      const receiptPayload = buildInvoiceData({
+        transaction: rawReceiptPayload,
+        cartItems,
+        cashierUser: currentUser,
+        isReprint: false,
+      })
+
       try {
         const completeSaleTransaction = httpsCallable(functions, 'completeSaleTransaction')
         const saleResponse = await completeSaleTransaction({
@@ -452,6 +523,8 @@ export default function CashierPage({
         console.log('[Cashier] completeSaleTransaction response received', saleResponse?.data)
       } catch (error) {
         console.error('Failed to finalize sale in backend:', error)
+        setSaleError(error?.message || 'Unable to record sale in backend. Please verify Cloud Functions deployment and try again.')
+        return
       }
 
       setIsPrintingReceipt(true)
@@ -470,6 +543,10 @@ export default function CashierPage({
       setAmountTendered('')
       setSelectedPaymentMethod('cash')
       setNotes('')
+      // Reset customer back to Walk-in Customer for the next customer
+      setCustomerName('Walk-in Customer')
+      setCustomerPhone('')
+      setCustomerVehicle('')
 
       const refreshedId = await requestTransactionId()
       if (refreshedId) {
@@ -632,12 +709,40 @@ export default function CashierPage({
           </div>
 
           <div className="cashier-customer-row">
-            <div className="cashier-customer-icon">◔</div>
+            <div className="cashier-customer-icon">👤</div>
             <div className="cashier-customer-text">
               <span className="cashier-label">Customer</span>
-              <strong>Walk-in Customer</strong>
+              <strong className={customerName !== 'Walk-in Customer' ? 'cashier-named-customer' : ''}>
+                {customerName}
+              </strong>
+              {(customerPhone || customerVehicle) && (
+                <small className="cashier-customer-subtext">
+                  {customerPhone && <span>📞 {customerPhone}</span>}
+                  {customerPhone && customerVehicle && <span className="opacity-40"> • </span>}
+                  {customerVehicle && <span>🏍️ {customerVehicle}</span>}
+                </small>
+              )}
             </div>
-            <button type="button" className="cashier-change-button">Change</button>
+            <div className="cashier-customer-actions">
+              {customerName !== 'Walk-in Customer' && (
+                <button
+                  type="button"
+                  className="cashier-reset-customer-btn"
+                  onClick={handleResetToWalkIn}
+                  title="Reset to Walk-in Customer"
+                >
+                  ✕
+                </button>
+              )}
+              <button
+                type="button"
+                className="cashier-change-button"
+                onClick={openCustomerModal}
+                title="Customer Information (F4)"
+              >
+                Information
+              </button>
+            </div>
           </div>
 
           <div className="cashier-items-header">
@@ -778,6 +883,23 @@ export default function CashierPage({
               <span>Change</span>
               <strong>₱ {change.toLocaleString('en-PH')}</strong>
             </div>
+            {saleError && (
+              <div
+                role="alert"
+                style={{
+                  marginBottom: '0.65rem',
+                  padding: '0.6rem 0.75rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid rgba(239, 68, 68, 0.45)',
+                  background: 'rgba(239, 68, 68, 0.14)',
+                  color: '#fca5a5',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                }}
+              >
+                {saleError}
+              </div>
+            )}
             <button
               type="button"
               className="cashier-complete-sale"
@@ -791,83 +913,157 @@ export default function CashierPage({
       </div>
 
       {receipt && (
-        <div className="cashier-receipt-backdrop" aria-modal="true" role="dialog">
-          <div className="cashier-receipt-modal">
+        <div className="cashier-receipt-backdrop" aria-modal="true" role="dialog" onClick={() => setReceipt(null)}>
+          <div className="cashier-receipt-modal" onClick={(e) => e.stopPropagation()}>
             <div className="cashier-receipt-header">
-              <div className="cashier-receipt-brand">BYEKLINK MOTOR INC.</div>
-              <div className="cashier-receipt-subbrand">TAGUM CITY</div>
-              <div className="cashier-receipt-id">{receipt.id}</div>
+              <div className="cashier-receipt-brand">BYKELINK MOTOR INC.</div>
+              <div className="cashier-receipt-subbrand">TAGUM CITY • DAVAO DEL NORTE</div>
+              <div className="cashier-receipt-tagline">Dealership & Precision Motorcycle Service Center</div>
+              <div className="cashier-receipt-doc-title">OFFICIAL SALES INVOICE</div>
+              <div className="cashier-receipt-id">INVOICE NO: {receipt.invoiceNumber || receipt.id}</div>
+              {receipt.isReprint && (
+                <div className="cashier-receipt-reprint-tag">
+                  [ OFFICIAL REPRINT / COPY ]
+                </div>
+              )}
             </div>
 
             <div className="cashier-receipt-arrow" aria-hidden="true">↓</div>
 
             <div className="cashier-receipt-body">
               <div className="cashier-receipt-row compact">
-                <span>{receipt.timestamp}</span>
+                <span>Date & Time</span>
+                <strong>{receipt.timestamp}</strong>
               </div>
               <div className="cashier-receipt-row compact">
                 <span>Customer</span>
                 <strong>{receipt.customer}</strong>
               </div>
+              {receipt.customerPhone && (
+                <div className="cashier-receipt-row compact">
+                  <span>Contact No.</span>
+                  <strong>{receipt.customerPhone}</strong>
+                </div>
+              )}
+              {receipt.customerVehicle && (
+                <div className="cashier-receipt-row compact">
+                  <span>Vehicle / Plate</span>
+                  <strong>{receipt.customerVehicle}</strong>
+                </div>
+              )}
               <div className="cashier-receipt-row compact">
-                <span>Payment</span>
+                <span>Cashier</span>
+                <strong>{receipt.cashierName || 'Cashier Counter'}</strong>
+              </div>
+              <div className="cashier-receipt-row compact">
+                <span>Payment Mode</span>
                 <strong>{receipt.paymentMethod}</strong>
               </div>
 
               <div className="cashier-receipt-divider" />
 
+              {/* Line items with clean PART / SERVICE badges */}
               <div className="cashier-receipt-items">
                 {receipt.items.map((item) => (
                   <div key={item.id} className="cashier-receipt-item-row">
                     <div className="cashier-receipt-item-main">
-                      <span>{item.item}</span>
-                      <small>{item.qty}x @ ₱ {item.unitPrice.toLocaleString('en-PH')}</small>
+                      <div className="cashier-item-header">
+                        <span className={`cashier-item-type-badge ${item.type === 'service' ? 'type-service' : 'type-part'}`}>
+                          {item.type === 'service' ? 'SERVICE' : 'PART'}
+                        </span>
+                        <span className="cashier-item-name">{item.name || item.item}</span>
+                      </div>
+                      <small className="cashier-item-calc">
+                        {item.qty}x @ ₱ {Number(item.unitPrice || 0).toLocaleString('en-PH')}
+                      </small>
                     </div>
-                    <strong>₱ {item.subtotal.toLocaleString('en-PH')}</strong>
+                    <strong className="cashier-item-subtotal">₱ {Number(item.subtotal || 0).toLocaleString('en-PH')}</strong>
                   </div>
                 ))}
               </div>
 
               <div className="cashier-receipt-divider" />
 
+              {/* Subtotal separation if both parts and services exist */}
+              {receipt.hasParts && receipt.hasServices && (
+                <>
+                  <div className="cashier-receipt-total">
+                    <span>Spare Parts Subtotal</span>
+                    <strong>₱ {Number(receipt.partsSubtotal || 0).toLocaleString('en-PH')}</strong>
+                  </div>
+                  <div className="cashier-receipt-total">
+                    <span>Service Labor Subtotal</span>
+                    <strong>₱ {Number(receipt.serviceSubtotal || 0).toLocaleString('en-PH')}</strong>
+                  </div>
+                </>
+              )}
+
               <div className="cashier-receipt-total">
-                <span>Subtotal</span>
-                <strong>₱ {receipt.subtotal.toLocaleString('en-PH')}</strong>
+                <span>Gross Subtotal</span>
+                <strong>₱ {Number(receipt.grossSubtotal || receipt.subtotal || 0).toLocaleString('en-PH')}</strong>
               </div>
+
+              {Number(receipt.discount || 0) > 0 && (
+                <div className="cashier-receipt-total">
+                  <span>Discount</span>
+                  <strong>- ₱ {Number(receipt.discount || 0).toLocaleString('en-PH')}</strong>
+                </div>
+              )}
+
+              <div className="cashier-receipt-total">
+                <span>Net VATable Sales</span>
+                <strong>₱ {Number(receipt.vatableSales || (receipt.grandTotal / 1.12) || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })}</strong>
+              </div>
+
               <div className="cashier-receipt-total">
                 <span>VAT (12%)</span>
-                <strong>₱ {receipt.vat.toLocaleString('en-PH')}</strong>
+                <strong>₱ {Number(receipt.vatAmount || receipt.vat || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })}</strong>
               </div>
+
               <div className="cashier-receipt-total grand">
-                <span>Grand Total</span>
-                <strong>₱ {receipt.grandTotal.toLocaleString('en-PH')}</strong>
+                <span>Total Amount Due</span>
+                <strong>₱ {Number(receipt.grandTotal || 0).toLocaleString('en-PH')}</strong>
               </div>
+
               <div className="cashier-receipt-total">
-                <span>Cash</span>
-                <strong>₱ {receipt.amountTendered.toLocaleString('en-PH')}</strong>
+                <span>Amount Tendered ({receipt.paymentMethod || 'Cash'})</span>
+                <strong>₱ {Number(receipt.amountTendered || 0).toLocaleString('en-PH')}</strong>
               </div>
+
               <div className="cashier-receipt-total change">
-                <span>Change</span>
-                <strong>₱ {receipt.change.toLocaleString('en-PH')}</strong>
+                <span>Change (Sukli)</span>
+                <strong>₱ {Number(receipt.change || 0).toLocaleString('en-PH')}</strong>
               </div>
 
               <div className="cashier-receipt-divider" />
               <div className="cashier-receipt-footer">
-                {isPrintingReceipt ? 'PRINTING...' : 'THANK YOU'}
+                <p className="cashier-footer-main">{isPrintingReceipt ? 'TRANSMITTING PRINT JOB...' : 'THANK YOU FOR YOUR PATRONAGE!'}</p>
+                <p className="cashier-footer-sub">Official Sales Invoice covering spare parts and precision service labor.</p>
               </div>
             </div>
 
             <div className="cashier-receipt-actions">
               <button
                 type="button"
+                className="cashier-receipt-print-btn"
+                onClick={() => window.print()}
+                title="Print Official Sales Invoice"
+              >
+                🖨 Print Invoice
+              </button>
+              <button
+                type="button"
                 className="cashier-receipt-close"
                 onClick={() => {
+                  const wasReprint = receipt.isReprint
                   setReceipt(null)
-                  setTransactionComplete(true)
-                  setTimeout(() => setTransactionComplete(false), 1800)
+                  if (!wasReprint) {
+                    setTransactionComplete(true)
+                    setTimeout(() => setTransactionComplete(false), 1800)
+                  }
                 }}
               >
-                Done
+                Close
               </button>
             </div>
           </div>
@@ -919,7 +1115,13 @@ export default function CashierPage({
             <div className="cashier-logs-list">
               {paginatedTodayLogs.length > 0 ? (
                 paginatedTodayLogs.map((log) => (
-                  <div key={log.id} className="cashier-log-row">
+                  <div
+                    key={log.id}
+                    className="cashier-log-row"
+                    onClick={() => handleReprintReceipt(log)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view and print receipt"
+                  >
                     <div className="cashier-log-main">
                       <strong>{log.transactionId}</strong>
                       <small>{log.customer}</small>
@@ -936,8 +1138,11 @@ export default function CashierPage({
                       type="button"
                       className="cashier-log-print-button"
                       aria-label={`Print receipt for ${log.transactionId}`}
-                      title="Print receipt"
-                      onClick={() => handleReprintReceipt(log)}
+                      title="View & Print Receipt"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleReprintReceipt(log)
+                      }}
                     >
                       🖨
                     </button>
@@ -969,6 +1174,83 @@ export default function CashierPage({
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {isCustomerModalOpen && (
+        <div className="cashier-qty-modal-backdrop" onClick={() => setIsCustomerModalOpen(false)}>
+          <div
+            className="cashier-qty-modal cashier-customer-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="cashier-qty-modal-header">
+              <h3>Customer Information</h3>
+              <button type="button" onClick={() => setIsCustomerModalOpen(false)}>×</button>
+            </div>
+
+            <form onSubmit={handleApplyCustomer} className="cashier-customer-form">
+              <div className="cashier-customer-field">
+                <label htmlFor="cashier-cust-name">Customer Name</label>
+                <input
+                  id="cashier-cust-name"
+                  type="text"
+                  placeholder="e.g. Juan Dela Cruz (Leave empty for Walk-in)"
+                  value={draftCustomerName}
+                  onChange={(e) => setDraftCustomerName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              <div className="cashier-customer-field">
+                <label htmlFor="cashier-cust-phone">Mobile / Contact Number (Optional)</label>
+                <input
+                  id="cashier-cust-phone"
+                  type="tel"
+                  placeholder="e.g. 0912 345 6789"
+                  value={draftCustomerPhone}
+                  onChange={(e) => setDraftCustomerPhone(e.target.value)}
+                />
+              </div>
+
+              <div className="cashier-customer-field">
+                <label htmlFor="cashier-cust-vehicle">Motorcycle / Plate Number (Optional)</label>
+                <input
+                  id="cashier-cust-vehicle"
+                  type="text"
+                  placeholder="e.g. Yamaha NMAX (123-ABC)"
+                  value={draftCustomerVehicle}
+                  onChange={(e) => setDraftCustomerVehicle(e.target.value)}
+                />
+              </div>
+
+              <div className="cashier-customer-modal-actions">
+                <button
+                  type="button"
+                  className="cashier-btn-walkin"
+                  onClick={handleResetToWalkIn}
+                >
+                  Set as Walk-in
+                </button>
+                <div className="cashier-customer-modal-actions-right">
+                  <button
+                    type="button"
+                    className="cashier-qty-modal-cancel"
+                    onClick={() => setIsCustomerModalOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="cashier-qty-modal-save"
+                  >
+                    Apply Customer
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

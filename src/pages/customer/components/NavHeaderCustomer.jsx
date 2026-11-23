@@ -6,7 +6,6 @@ import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded'
 import ChatRoundedIcon from '@mui/icons-material/ChatRounded'
 import AccountCircleRoundedIcon from '@mui/icons-material/AccountCircleRounded'
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
-import AssignmentRoundedIcon from '@mui/icons-material/AssignmentRounded'
 import BuildRoundedIcon from '@mui/icons-material/BuildRounded'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
 import bykelinkLogo from '../../../assets/bykelinklogo.png'
@@ -18,8 +17,6 @@ export default function NavHeaderCustomer({
   isDarkMode,
   onNavigateToShowroom,
   onNavigateToService,
-  onNavigateToFinancing,
-  onNavigateToFinancingStatus,
   onNavigateToMessages,
   onNavigateToProfile,
   onNavigateToServiceBookings,
@@ -29,15 +26,12 @@ export default function NavHeaderCustomer({
   userAvatar = null,
 }) {
   const [notifications, setNotifications] = useState([])
-  const [financingNotifications, setFinancingNotifications] = useState([])
   const [messageCount, setMessageCount] = useState(0)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false)
   const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false)
   const [isDrawerAnimating, setIsDrawerAnimating] = useState(false)
   const [isLogoutConfirmationOpen, setIsLogoutConfirmationOpen] = useState(false)
-  const financingStatusRef = useRef(new Map())
-  const hasLoadedFinancingStatusRef = useRef(false)
   const bookingAssignmentRef = useRef(new Map())
   const hasLoadedBookingAssignmentRef = useRef(false)
   const bookingStatusRef = useRef(new Map())
@@ -46,9 +40,6 @@ export default function NavHeaderCustomer({
   useEffect(() => {
     if (!currentUser?.uid) {
       setNotifications([])
-      setFinancingNotifications([])
-      financingStatusRef.current = new Map()
-      hasLoadedFinancingStatusRef.current = false
       bookingAssignmentRef.current = new Map()
       hasLoadedBookingAssignmentRef.current = false
       bookingStatusRef.current = new Map()
@@ -165,81 +156,6 @@ export default function NavHeaderCustomer({
   }, [currentUser?.uid])
 
   useEffect(() => {
-    if (!currentUser?.uid) return undefined
-
-    const financingQuery = query(
-      collection(db, 'financingApplications'),
-      where('submittedBy.uid', '==', currentUser.uid),
-    )
-
-    const unsubscribe = onSnapshot(
-      financingQuery,
-      (snapshot) => {
-        const nextStatuses = new Map()
-        const nextNotifications = []
-        const changedNotifications = []
-
-        snapshot.docs.forEach((docSnap) => {
-          const data = docSnap.data()
-          const status = String(data.status || '').toLowerCase()
-          const referenceId = data.referenceId || docSnap.id
-
-          nextStatuses.set(docSnap.id, status)
-
-          if (status === 'approved' || status === 'rejected' || status === 'completed') {
-            const notification = {
-              id: `financing-${docSnap.id}-${status}`,
-              title: status === 'approved'
-                ? 'Financing Approved'
-                : status === 'rejected'
-                  ? 'Financing Application Rejected'
-                  : 'Financing Application Completed',
-              message: status === 'approved'
-                ? `Your application ${referenceId} has been approved.`
-                : status === 'rejected'
-                  ? `Your application ${referenceId} was rejected. Please review the application details.`
-                  : `Your application ${referenceId} is completed and ready for the next step.`,
-              timestamp: data.updatedAt?.toDate?.()?.toLocaleString?.() || 'Just now',
-              read: true,
-            }
-
-            nextNotifications.push(notification)
-
-            if (
-              hasLoadedFinancingStatusRef.current &&
-              financingStatusRef.current.get(docSnap.id) !== status
-            ) {
-              changedNotifications.push({ ...notification, read: false })
-            }
-          }
-        })
-
-        if (changedNotifications.length > 0) {
-          setFinancingNotifications((current) => [
-            ...changedNotifications,
-            ...current.filter((notification) => !changedNotifications.some((changed) => changed.id === notification.id)),
-          ])
-        } else {
-          setFinancingNotifications((current) => {
-            const unreadNotifications = current.filter((notification) => !notification.read)
-            return [...unreadNotifications, ...nextNotifications.filter(
-              (notification) => !unreadNotifications.some((unread) => unread.id === notification.id),
-            )]
-          })
-        }
-
-        financingStatusRef.current = nextStatuses
-        hasLoadedFinancingStatusRef.current = true
-      },
-      (error) => {
-        console.error('Unable to subscribe to financing application notifications:', error)
-      },
-    )
-
-    return () => unsubscribe()
-  }, [currentUser?.uid])
-
-  useEffect(() => {
     if (!currentUser?.uid) {
       setMessageCount(0)
       return undefined
@@ -337,14 +253,9 @@ export default function NavHeaderCustomer({
           : notif,
       ),
     )
-    setFinancingNotifications((current) =>
-      current.map((notif) =>
-        notif.id === notifId ? { ...notif, read: true } : notif,
-      ),
-    )
   }
 
-  const combinedNotifications = [...notifications, ...financingNotifications]
+  const combinedNotifications = notifications
 
   const handleProfileClick = () => {
     console.log('My Profile clicked, calling onNavigateToProfile:', onNavigateToProfile)
@@ -391,18 +302,6 @@ export default function NavHeaderCustomer({
               Showroom
             </button>
             <button
-              onClick={() => onNavigateToFinancing?.()}
-              className={`border-b-2 pb-1 text-[11px] font-bold uppercase tracking-[0.2em] transition-colors ${
-                isActive('financing')
-                  ? 'border-red-600 text-red-600'
-                  : isDarkMode
-                    ? 'border-transparent text-slate-400 hover:text-white'
-                    : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Financing
-            </button>
-            <button
               onClick={onNavigateToService}
               className={`border-b-2 pb-1 text-[11px] font-bold uppercase tracking-[0.2em] transition-colors ${
                 isActive('service')
@@ -425,18 +324,6 @@ export default function NavHeaderCustomer({
               }`}
             >
               My Service Bookings
-            </button>
-            <button
-              onClick={onNavigateToFinancingStatus}
-              className={`border-b-2 pb-1 text-[11px] font-bold uppercase tracking-[0.2em] transition-colors ${
-                isActive('financing-status')
-                  ? 'border-red-600 text-red-600'
-                  : isDarkMode
-                    ? 'border-transparent text-slate-400 hover:text-white'
-                    : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Track My Status
             </button>
           </nav>
 
@@ -543,17 +430,11 @@ export default function NavHeaderCustomer({
             <button onClick={onNavigateToShowroom} className={`block text-[11px] font-bold uppercase tracking-[0.2em] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'} w-full text-left`}>
               Showroom
             </button>
-            <button onClick={() => onNavigateToFinancing?.()} className={`block text-[11px] font-bold uppercase tracking-[0.2em] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'} w-full text-left`}>
-              Financing
-            </button>
             <button onClick={onNavigateToService} className={`block text-[11px] font-bold uppercase tracking-[0.2em] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'} w-full text-left`}>
               Service
             </button>
             <button onClick={onNavigateToServiceBookings} className={`block text-[11px] font-bold uppercase tracking-[0.2em] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'} w-full text-left`}>
               My Service Bookings
-            </button>
-            <button onClick={onNavigateToFinancingStatus} className={`block text-[11px] font-bold uppercase tracking-[0.2em] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'} w-full text-left`}>
-              Track My Status
             </button>
             <button onClick={onNavigateToMessages} className={`block text-[11px] font-bold uppercase tracking-[0.2em] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'} w-full text-left`}>
               Messages
@@ -634,21 +515,6 @@ export default function NavHeaderCustomer({
               >
                 <PersonRoundedIcon sx={{ fontSize: 20 }} />
                 <span className="text-sm font-medium">My Profile</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  if (onNavigateToFinancingStatus) {
-                    onNavigateToFinancingStatus()
-                    setTimeout(() => setIsProfileDrawerOpen(false), 50)
-                  }
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition ${
-                  isDarkMode ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <AssignmentRoundedIcon sx={{ fontSize: 20 }} />
-                <span className="text-sm font-medium">Track My Status</span>
               </button>
 
               <button

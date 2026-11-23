@@ -251,6 +251,203 @@
   font-size: 0.72rem;
 }
 
+.analytics-table tbody tr.is-clickable {
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+
+.analytics-table tbody tr.is-clickable:hover,
+.analytics-table tbody tr.is-clickable:focus-visible {
+  background: color-mix(in srgb, var(--analytics-surface) 84%, #c51d34 16%);
+  outline: none;
+}
+
+.analytics-items-cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  max-width: 320px;
+}
+
+.analytics-items-summary {
+  color: var(--superadmin-text, var(--text));
+  font-weight: 600;
+  white-space: normal;
+}
+
+.analytics-items-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.analytics-qty-badge,
+.analytics-bulk-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.analytics-qty-badge {
+  border: 1px solid var(--analytics-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--superadmin-text, var(--text));
+}
+
+.analytics-bulk-badge {
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+}
+
+.analytics-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(4, 4, 4, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.analytics-detail-modal {
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  overflow-y: auto;
+  border: 1px solid var(--analytics-border);
+  border-radius: 1rem;
+  background: var(--analytics-surface);
+  color: var(--superadmin-text, var(--text));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.analytics-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-bottom: 1px solid var(--analytics-border);
+}
+
+.analytics-detail-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.analytics-detail-meta {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: var(--analytics-muted);
+}
+
+.analytics-detail-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.analytics-detail-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--analytics-border);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--superadmin-text, var(--text));
+  cursor: pointer;
+}
+
+.analytics-detail-body {
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.analytics-detail-items-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--analytics-border);
+  border-radius: 0.75rem;
+}
+
+.analytics-detail-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.analytics-detail-items-table th,
+.analytics-detail-items-table td {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--analytics-border);
+  text-align: left;
+}
+
+.analytics-detail-items-table th {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--analytics-soft);
+}
+
+.analytics-detail-items-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.analytics-detail-empty {
+  padding: 1.25rem;
+  border: 1px dashed var(--analytics-border);
+  border-radius: 0.75rem;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--analytics-muted);
+}
+
+.analytics-detail-totals {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--analytics-border);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--analytics-surface) 90%, #000 10%);
+  font-size: 0.82rem;
+}
+
+.analytics-detail-totals > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--analytics-muted);
+}
+
+.analytics-detail-totals > div.is-grand {
+  padding-top: 0.45rem;
+  margin-top: 0.15rem;
+  border-top: 1px solid var(--analytics-border);
+  color: var(--superadmin-text, var(--text));
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.analytics-detail-notes {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--analytics-muted);
+}
+
 .analytics-table-amount {
   text-align: right !important;
 }
@@ -301,6 +498,38 @@
 .analytics-pagination strong {
   color: var(--analytics-muted);
   font-weight: 650;
+}
+
+/* Most Sold Spare Parts Performance Panel */
+.analytics-top-parts-panel {
+  margin-top: 1.5rem;
+  margin-bottom: 2rem;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.analytics-podium-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 1.25rem 1.25rem 0.5rem;
+}
+
+.analytics-podium-card {
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.analytics-podium-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+}
+
+@media (max-width: 860px) {
+  .analytics-podium-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {

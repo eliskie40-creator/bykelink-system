@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { addDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../firebase'
+import { logSystemAuditEvent } from '../../services/auditLogService'
 import BiotechRoundedIcon from '@mui/icons-material/BiotechRounded'
 import BuildCircleRoundedIcon from '@mui/icons-material/BuildCircleRounded'
 import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded'
@@ -85,8 +86,6 @@ export default function CustomerServicePage({
   currentUser,
   onSignOut,
   onNavigateToShowroom,
-  onNavigateToFinancing,
-  onNavigateToFinancingStatus,
   onNavigateToMessages,
   onNavigateToProfile,
   onNavigateToServiceBookings,
@@ -409,6 +408,23 @@ export default function CustomerServicePage({
 
       const docRef = await addDoc(collection(db, 'serviceBookings'), bookingPayload)
       const newBooking = { id: docRef.id, ...bookingPayload }
+      await logSystemAuditEvent({
+        module: 'Service',
+        action: 'SERVICE_BOOKING_CREATED',
+        summary: `Customer booked ${selectedServiceTitles.join(', ')} for ${vehicleInfo.model} on ${selectedDay} at ${selectedTime}`,
+        targetType: 'serviceBooking',
+        targetId: docRef.id,
+        targetName: bookingPayload.customerName,
+        newData: {
+          model: vehicleInfo.model,
+          service: bookingPayload.service,
+          bookingDateKey: selectedDay,
+          bookingTime: selectedTime,
+        },
+        amount: estimatedCost,
+        currentUser,
+        accessRole: 'customer',
+      })
       setServiceBookings((current) => [...current, newBooking])
       setCurrentBooking(newBooking)
       setActiveStep('success')
@@ -1072,8 +1088,6 @@ export default function CustomerServicePage({
         activePage="service"
         onNavigateToShowroom={onNavigateToShowroom}
         onNavigateToService={onNavigateBack}
-        onNavigateToFinancing={onNavigateToFinancing}
-        onNavigateToFinancingStatus={onNavigateToFinancingStatus}
         onNavigateToMessages={onNavigateToMessages}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToServiceBookings={onNavigateToServiceBookings}

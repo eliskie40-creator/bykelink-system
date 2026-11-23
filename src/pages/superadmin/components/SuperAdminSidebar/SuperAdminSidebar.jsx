@@ -61,7 +61,7 @@ const visibleItems = userMenuAccess.length > 0
     },
     {
       label: 'Sales',
-      itemIds: ['financing-applications', 'approved-applications', 'analytics'],
+      itemIds: ['analytics', 'transaction-history'],
     },
     { label: 'Account', itemIds: ['chats-management', 'profile'] },
   ]

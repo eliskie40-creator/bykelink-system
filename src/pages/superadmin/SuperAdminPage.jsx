@@ -7,6 +7,7 @@ import AnalyticsRoundedIcon from '@mui/icons-material/AnalyticsRounded'
 import BuildRoundedIcon from '@mui/icons-material/BuildRounded'
 import ChatBubbleRoundedIcon from '@mui/icons-material/ChatBubbleRounded'
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import ManageAccountsRoundedIcon from '@mui/icons-material/ManageAccountsRounded'
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
 import TwoWheelerRoundedIcon from '@mui/icons-material/TwoWheelerRounded'
@@ -30,18 +31,15 @@ import InventorySection from './sections/InventorySection'
 import InventoryReportsSection from './sections/InventoryReportsSection'
 import InventoryDeleteArchivedSection from './sections/InventoryDeleteArchivedSection'
 import MasterDataManagementSection from './sections/MasterDataManagementSection'
-import FinancingApplicationsSection from './sections/FinancingApplicationsSection'
-import ApprovedApplicationsSection from './sections/ApprovedApplicationsSection'
-import FinancingApplicationDetailSection from './sections/FinancingApplicationDetailSection'
 import ServiceRequestsSection from './sections/ServiceRequestsSection'
 import TechniciansSection from './sections/TechniciansSection'
+import TransactionHistorySection from './sections/TransactionHistorySection'
 import UserManagementSection from './sections/UserManagementSection'
 import ServiceTypeSection from './sections/ServiceTypeSection'
 import { saveAccessAssignment } from '../../services/userService';
 import {
   buildChartBars,
   fallbackTechnicians,
-  financingStatusOptions,
   formatCurrency,
   formatDate,
   getStatusClasses,
@@ -77,8 +75,6 @@ const baseSidebarItems = [
       { id: 'master-variants', label: 'Variants' },
     ],
   },
-  { id: 'financing-applications', label: 'Financing Applications', icon: TrendingUpRoundedIcon },
-  { id: 'approved-applications', label: 'Approved Applications', icon: TrendingUpRoundedIcon },
   { id: 'chats-management', label: 'Chats Management', icon: ChatBubbleRoundedIcon },
   { 
     id: 'service-management', 
@@ -90,6 +86,7 @@ const baseSidebarItems = [
     ]
   },
   { id: 'analytics', label: 'Sales Analytics', icon: AnalyticsRoundedIcon },
+  { id: 'transaction-history', label: 'Transaction History', icon: HistoryRoundedIcon },
   { id: 'profile', label: 'Profile', icon: PersonRoundedIcon },
 ]
 
@@ -152,15 +149,13 @@ const defaultEditUserForm = {
   accessibleSections: [],
 }
 
-export default function SuperAdminPage({ onNavigateHome, onSignOut, currentUser, accessProfile, dashboardPath = '/superadmin', currentPath = '/superadmin', initialSection = 'dashboard', initialFinancingApplicationId = '', onNavigateDashboardPath }) {
+export default function SuperAdminPage({ onNavigateHome, onSignOut, currentUser, accessProfile, dashboardPath = '/superadmin', currentPath = '/superadmin', initialSection = 'dashboard', onNavigateDashboardPath }) {
 
-  const [activeSection, setActiveSection] = useState(initialFinancingApplicationId ? 'financing-application-detail' : initialSection)
+  const [activeSection, setActiveSection] = useState(initialSection)
   const [searchTerm, setSearchTerm] = useState('')
   const [users, setUsers] = useState([])
   const [userProfile, setUserProfile] = useState(null)
   const [serviceRequests, setServiceRequests] = useState([])
-  const [financingApplications, setFinancingApplications] = useState([])
-  const [selectedFinancingApplication, setSelectedFinancingApplication] = useState(null)
   const [inventory, setInventory] = useState([])
   const [technicians, setTechnicians] = useState([])
   const [authorizedAdmins, setAuthorizedAdmins] = useState([])
@@ -171,6 +166,8 @@ export default function SuperAdminPage({ onNavigateHome, onSignOut, currentUser,
   const [variants, setVariants] = useState([])
   const [inventoryLogs, setInventoryLogs] = useState([])
   const [transactionLogs, setTransactionLogs] = useState([])
+  const [auditLogs, setAuditLogs] = useState([])
+  const [inventoryChangeRequests, setInventoryChangeRequests] = useState([])
   const [deletedItems, setDeletedItems] = useState([])
   const [unreadChatCount, setUnreadChatCount] = useState(0)
   const [previousUnreadCount, setPreviousUnreadCount] = useState(0)
@@ -182,7 +179,6 @@ export default function SuperAdminPage({ onNavigateHome, onSignOut, currentUser,
   const [loadingState, setLoadingState] = useState({
     users: true,
     serviceRequests: true,
-    financingApplications: true,
     inventory: true,
     technicians: true,
     authorizedAdmins: true,
@@ -193,6 +189,8 @@ export default function SuperAdminPage({ onNavigateHome, onSignOut, currentUser,
     variants: true,
     inventoryLogs: true,
     transactionLogs: true,
+    auditLogs: true,
+    inventoryChangeRequests: true,
     conversations: true,
   })
   const [actionMessage, setActionMessage] = useState(null)
@@ -223,6 +221,24 @@ export default function SuperAdminPage({ onNavigateHome, onSignOut, currentUser,
       return []
     }
   })
+  const [dismissedNotificationIds, setDismissedNotificationIds] = useState(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const saved = window.localStorage.getItem('bykelink-dismissed-notifications')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+  const [readAlertIds, setReadAlertIds] = useState(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const saved = window.localStorage.getItem('bykelink-read-alert-ids')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
   const [chatFocusRequest, setChatFocusRequest] = useState(null)
   const { isDarkMode, toggleTheme } = useTheme()
   const { success: toastSuccess, error: toastError } = useToast()
@@ -241,7 +257,6 @@ export default function SuperAdminPage({ onNavigateHome, onSignOut, currentUser,
   const [pendingSection, setPendingSection] = useState(null)
 
   const sectionTitle = useMemo(() => {
-    if (activeSection === 'financing-application-detail') return 'Financing Application Detail'
     return baseSidebarItems.find((item) => item.id === activeSection)?.label ?? 'Dashboard'
   }, [activeSection])
 
@@ -481,11 +496,6 @@ export default function SuperAdminPage({ onNavigateHome, onSignOut, currentUser,
         limitCount: null,
       }),
       subscribeToCollection({
-        collectionName: 'financingApplications',
-        stateKey: 'financingApplications',
-        setter: setFinancingApplications,
-      }),
-      subscribeToCollection({
         collectionName: 'inventory',
         stateKey: 'inventory',
         setter: setInventory,
@@ -555,6 +565,22 @@ currentAccessRole === 'staff personnel' && currentUser?.email
         collectionName: 'transactionLogs',
         stateKey: 'transactionLogs',
         setter: setTransactionLogs,
+        shouldSubscribe: canManageAccess,
+        orderField: 'createdAt',
+        limitCount: null,
+      }),
+      subscribeToCollection({
+        collectionName: 'auditLogs',
+        stateKey: 'auditLogs',
+        setter: setAuditLogs,
+        shouldSubscribe: canManageAccess,
+        orderField: 'createdAt',
+        limitCount: null,
+      }),
+      subscribeToCollection({
+        collectionName: 'inventoryChangeRequests',
+        stateKey: 'inventoryChangeRequests',
+        setter: setInventoryChangeRequests,
         shouldSubscribe: canEditOperations,
         orderField: 'createdAt',
         limitCount: null,
@@ -904,20 +930,6 @@ currentAccessRole === 'staff personnel' && currentUser?.email
     });
   }, [technicians, serviceRequests]);
 
-  const filteredFinancingApplications = useMemo(() => {
-    return financingApplications.filter((application) => {
-      const haystack = [
-        application.referenceId,
-        application.status,
-        application.applicant?.fullName,
-        application.submittedBy?.email,
-        application.motorcycle?.name,
-      ].join(' ')
-
-      return haystack.toLowerCase().includes(normalizedSearchTerm)
-    })
-  }, [financingApplications, normalizedSearchTerm])
-
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
       const haystack = [item.name, item.category, item.status].join(' ')
@@ -1066,13 +1078,88 @@ currentAccessRole === 'staff personnel' && currentUser?.email
   const chartBars = useMemo(() => buildChartBars(filteredServiceRequests), [filteredServiceRequests])
 
   const notificationItems = useMemo(() => {
-    return [...chatNotifications]
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-      .map((item) => ({
+    const items = []
+
+    // 1. Chat notifications
+    chatNotifications.forEach((item) => {
+      items.push({
         ...item,
         time: item.time || formatDate(new Date(item.createdAt || Date.now())),
-      }))
-  }, [chatNotifications])
+      })
+    })
+
+    // 2. Pending inventory verification requests
+    inventoryChangeRequests.forEach((req) => {
+      if (req.status === 'pending') {
+        const id = `inv-req-${req.id}`
+        const isRename = req.requestType === 'rename'
+        const isUpdate = req.requestType === 'update'
+        const typeLabel = isRename ? 'Product Name Change' : isUpdate ? 'Product Update' : 'Product Deletion'
+        const createdDate = req.createdAt?.toDate ? req.createdAt.toDate() : (req.createdAt?.seconds ? new Date(req.createdAt.seconds * 1000) : new Date(req.createdAt || Date.now()))
+
+        items.push({
+          id,
+          type: 'INVENTORY_REQUEST',
+          title: `${typeLabel} Request`,
+          description: `Staff requested ${req.requestType || 'action'} for "${req.currentName || 'Product'}". Verification required.`,
+          time: formatDate(createdDate),
+          createdAt: createdDate.toISOString(),
+          read: readAlertIds.includes(id),
+          targetSection: 'inventory',
+        })
+      }
+    })
+
+    // 3. Low stock and out-of-stock items (stock <= 5)
+    inventory.forEach((prod) => {
+      const stock = Number(prod.stock ?? 0)
+      if (stock <= 5) {
+        const id = `low-stock-${prod.id}`
+        const isOutOfStock = stock <= 0
+        const updatedDate = prod.updatedAt?.toDate ? prod.updatedAt.toDate() : (prod.updatedAt?.seconds ? new Date(prod.updatedAt.seconds * 1000) : new Date())
+
+        items.push({
+          id,
+          type: 'LOW_STOCK',
+          title: isOutOfStock ? 'Out of Stock Alert' : 'Low Stock Warning',
+          description: `"${prod.name || 'Product'}" has only ${stock} unit(s) remaining in inventory.`,
+          time: formatDate(updatedDate),
+          createdAt: updatedDate.toISOString(),
+          read: readAlertIds.includes(id),
+          targetSection: 'inventory',
+        })
+      }
+    })
+
+    // 4. Pending service requests
+    serviceRequests.forEach((sr) => {
+      if (sr.status === 'pending' || sr.status === 'requested') {
+        const id = `srv-req-${sr.id}`
+        const createdDate = sr.createdAt?.toDate ? sr.createdAt.toDate() : (sr.createdAt?.seconds ? new Date(sr.createdAt.seconds * 1000) : new Date(sr.createdAt || Date.now()))
+
+        items.push({
+          id,
+          type: 'SERVICE_BOOKING',
+          title: 'New Service Booking',
+          description: `${sr.customerName || sr.customerEmail || 'Customer'} requested ${sr.serviceType || sr.serviceName || 'service'}${sr.motorcycleModel ? ` for ${sr.motorcycleModel}` : ''}.`,
+          time: formatDate(createdDate),
+          createdAt: createdDate.toISOString(),
+          read: readAlertIds.includes(id),
+          targetSection: 'service-scheduling',
+        })
+      }
+    })
+
+    // Filter out dismissed notifications
+    const activeItems = items.filter((n) => !dismissedNotificationIds.includes(n.id))
+
+    // Sort descending by date
+    return activeItems.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+  }, [chatNotifications, inventoryChangeRequests, inventory, serviceRequests, dismissedNotificationIds, readAlertIds])
+
+  const unreadNotificationCount = useMemo(() => {
+    return notificationItems.filter((item) => !item.read).length
+  }, [notificationItems])
 
   
 
@@ -1111,28 +1198,38 @@ const allowedSectionIds = useMemo(() => {
 useEffect(() => {
   if (!allowedSectionIds) return
 
-  const requiredSection = activeSection === 'financing-application-detail'
-    ? 'financing-applications'
-    : activeSection
-
-  if (!allowedSectionIds.has(requiredSection)) {
+  if (!allowedSectionIds.has(activeSection)) {
     setActiveSection('dashboard')
   }
 }, [activeSection, allowedSectionIds])
 
-const sidebarItems = useMemo(() => {
+  const sidebarItems = useMemo(() => {
+  const pendingInventoryVerifications = inventoryChangeRequests.filter(
+    (req) => req.status === 'pending',
+  ).length
+
   return baseSidebarItems
+    .filter((item) => item.id !== 'transaction-history' || canManageAccess)
     .map((item) => {
       const visibleSubitems = item.subitems?.filter(
         (subitem) => !allowedSectionIds || allowedSectionIds.has(subitem.id),
-      ).map((subitem) => subitem.id === 'service-logs'
-        ? {
+      ).map((subitem) => {
+        if (subitem.id === 'service-logs') {
+          return {
             ...subitem,
             badge: serviceRequests.filter(
               (request) => String(request.status || 'pending').toLowerCase() === 'pending',
             ).length || null,
           }
-        : subitem)
+        }
+        if (subitem.id === 'inventory') {
+          return {
+            ...subitem,
+            badge: pendingInventoryVerifications > 0 ? pendingInventoryVerifications : null,
+          }
+        }
+        return subitem
+      })
 
       return item.subitems ? { ...item, subitems: visibleSubitems } : item
     })
@@ -1142,28 +1239,6 @@ const sidebarItems = useMemo(() => {
       item.subitems?.length > 0,
     )
     .map((item) => {
-      if (item.id === 'financing-applications') {
-        const upcomingApplicationsCount = financingApplications.filter(
-          (application) => String(application.status || 'submitted').toLowerCase() === 'submitted',
-        ).length
-
-        return {
-          ...item,
-          badge: upcomingApplicationsCount > 0 ? upcomingApplicationsCount : null,
-        }
-      }
-
-      if (item.id === 'approved-applications') {
-        const applicationsToFinalizeCount = financingApplications.filter(
-          (application) => String(application.status || '').toLowerCase() === 'approved',
-        ).length
-
-        return {
-          ...item,
-          badge: applicationsToFinalizeCount > 0 ? applicationsToFinalizeCount : null,
-        }
-      }
-
       if (item.id === 'chats-management') {
         return {
           ...item,
@@ -1173,7 +1248,7 @@ const sidebarItems = useMemo(() => {
 
       return item
     })
-  }, [allowedSectionIds, financingApplications, serviceRequests, unreadChatCount])
+  }, [allowedSectionIds, canManageAccess, inventoryChangeRequests, serviceRequests, unreadChatCount])
 
 
 
@@ -1242,20 +1317,6 @@ const sidebarItems = useMemo(() => {
         text: `Unable to update ${collectionName}. ${error.message}`,
       })
     }
-  }
-
-  const handleFinancingStatusUpdate = async (applicationId, status) => {
-    if (!canEditOperations) {
-      throw new Error('Your current role can view this data but cannot change it.')
-    }
-
-    const updateFinancingApplicationStatus = httpsCallable(functions, 'updateFinancingApplicationStatus')
-    const response = await updateFinancingApplicationStatus({ applicationId, status })
-
-    setActionMessage({
-      type: 'success',
-      text: response?.data?.message || 'Financing application status updated successfully.',
-    })
   }
 
   const handleOpenNewUserModal = () => {
@@ -1427,33 +1488,10 @@ const sidebarItems = useMemo(() => {
     }
   }
 
-  const handleOpenFinancingApplication = (application) => {
-    setSelectedFinancingApplication(application || null)
-    setActiveSection('financing-application-detail')
-    onNavigateDashboardPath?.(`${dashboardPath}/financing-applications/${encodeURIComponent(application?.id || '')}`)
-  }
-
-  const handleBackToFinancingApplications = () => {
-    setSelectedFinancingApplication(null)
-    handleSectionChange('financing-applications')
-  }
-
-  useEffect(() => {
-    if (!initialFinancingApplicationId) return
-
-    const matchedApplication = financingApplications.find((application) => application.id === initialFinancingApplicationId)
-    if (matchedApplication) {
-      setSelectedFinancingApplication(matchedApplication)
-      setActiveSection('financing-application-detail')
-    }
-  }, [financingApplications, initialFinancingApplicationId])
-
   const handleSectionChange = (sectionId) => {
-    const requiredSection = sectionId === 'financing-application-detail'
-      ? 'financing-applications'
-      : sectionId
+    if (sectionId === 'transaction-history' && !canManageAccess) return
 
-    if (allowedSectionIds && !allowedSectionIds.has(requiredSection)) return
+    if (allowedSectionIds && !allowedSectionIds.has(sectionId)) return
 
     // If navigating away from profile and there are unsaved changes, confirm
     const hasUnsaved = (() => {
@@ -1624,6 +1662,15 @@ const sidebarItems = useMemo(() => {
       return
     }
 
+    // Mark clicked alert as read
+    setReadAlertIds((prev) => {
+      const next = Array.from(new Set([...prev, notification.id]))
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('bykelink-read-alert-ids', JSON.stringify(next))
+      }
+      return next
+    })
+
     // Handle password reset notifications from admin reset action
     if (notification.type === 'PASSWORD_RESET') {
       setIsNotificationsOpen(false)
@@ -1648,21 +1695,52 @@ const sidebarItems = useMemo(() => {
       return
     }
 
-    // Handle chat notifications
-    if (!notification?.conversationId) {
+    // Handle inventory verification requests and low stock alerts
+    if (notification.type === 'INVENTORY_REQUEST' || notification.type === 'LOW_STOCK') {
+      setIsNotificationsOpen(false)
+      setActiveSection('inventory')
+      
+      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+        setIsSidebarOpen(false)
+      }
+      
       return
     }
 
-    markConversationNotificationsRead(notification.conversationId)
-    setChatFocusRequest({
-      conversationId: notification.conversationId,
-      requestedAt: Date.now(),
-    })
-    setIsNotificationsOpen(false)
-    setActiveSection('chats-management')
+    // Handle service booking alerts
+    if (notification.type === 'SERVICE_BOOKING') {
+      setIsNotificationsOpen(false)
+      setActiveSection('service-scheduling')
+      
+      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+        setIsSidebarOpen(false)
+      }
+      
+      return
+    }
 
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-      setIsSidebarOpen(false)
+    // Handle chat notifications
+    if (notification?.conversationId) {
+      markConversationNotificationsRead(notification.conversationId)
+      setChatFocusRequest({
+        conversationId: notification.conversationId,
+        requestedAt: Date.now(),
+      })
+      setIsNotificationsOpen(false)
+      setActiveSection('chats-management')
+
+      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+        setIsSidebarOpen(false)
+      }
+      return
+    }
+
+    if (notification.targetSection) {
+      setIsNotificationsOpen(false)
+      setActiveSection(notification.targetSection)
+      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+        setIsSidebarOpen(false)
+      }
     }
   }, [markConversationNotificationsRead])
 
@@ -1684,24 +1762,48 @@ const sidebarItems = useMemo(() => {
   }, [])
 
   const handleMarkAllAsRead = useCallback(() => {
+    const allIds = notificationItems.map((n) => n.id)
+    setReadAlertIds((prev) => {
+      const next = Array.from(new Set([...prev, ...allIds]))
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('bykelink-read-alert-ids', JSON.stringify(next))
+      }
+      return next
+    })
     setChatNotifications((current) =>
       current.map((item) => ({ ...item, read: true }))
     )
-  }, [])
+  }, [notificationItems])
 
   const confirmNotificationAction = useCallback(async () => {
     if (!notificationConfirmation) return
 
     if (notificationConfirmation.type === 'delete' && notificationConfirmation.notificationId) {
+      const id = notificationConfirmation.notificationId
+      setDismissedNotificationIds((prev) => {
+        const next = Array.from(new Set([...prev, id]))
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('bykelink-dismissed-notifications', JSON.stringify(next))
+        }
+        return next
+      })
       setChatNotifications((current) =>
-        current.filter((item) => item.id !== notificationConfirmation.notificationId)
+        current.filter((item) => item.id !== id)
       )
     } else if (notificationConfirmation.type === 'deleteAll') {
+      const allIds = notificationItems.map((n) => n.id)
+      setDismissedNotificationIds((prev) => {
+        const next = Array.from(new Set([...prev, ...allIds]))
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('bykelink-dismissed-notifications', JSON.stringify(next))
+        }
+        return next
+      })
       setChatNotifications([])
     }
 
     setNotificationConfirmation(null)
-  }, [notificationConfirmation])
+  }, [notificationConfirmation, notificationItems])
 
   const handleLogoutClick = useCallback(() => {
     setLogoutConfirmation(true)
@@ -2059,6 +2161,8 @@ const sidebarItems = useMemo(() => {
             formatCurrency={formatCurrency}
             formatDate={formatDate}
             getStatusClasses={getStatusClasses}
+            currentUser={currentUser}
+            currentAccessRole={currentAccessRole}
             isDarkMode={isDarkMode}
           />
         )
@@ -2078,6 +2182,8 @@ const sidebarItems = useMemo(() => {
       case 'service-type':
         return (
           <ServiceTypeSection
+            currentUser={currentUser}
+            currentAccessRole={currentAccessRole}
             isDarkMode={isDarkMode}
           />
         )
@@ -2104,8 +2210,19 @@ const sidebarItems = useMemo(() => {
             normalizeText={normalizeText}
             transactionLogs={transactionLogs}
             isDarkMode={isDarkMode}
+            currentUser={currentUser}
           />
         )
+      case 'transaction-history':
+        return canManageAccess ? (
+          <TransactionHistorySection
+            auditLogs={auditLogs}
+            transactionLogs={transactionLogs}
+            formatDate={formatDate}
+            formatCurrency={formatCurrency}
+            isDarkMode={isDarkMode}
+          />
+        ) : null
       case 'user-management':
         return (
           <UserManagementSection
@@ -2142,40 +2259,6 @@ const sidebarItems = useMemo(() => {
             isDarkMode={isDarkMode}
           />
         )
-      case 'financing-applications':
-        return (
-          <FinancingApplicationsSection
-            applications={filteredFinancingApplications}
-            canEditOperations={canEditOperations}
-            handleCollectionUpdate={handleCollectionUpdate}
-            formatCurrency={formatCurrency}
-            onOpenApplication={handleOpenFinancingApplication}
-            isDarkMode={isDarkMode}
-          />
-        )
-      case 'financing-application-detail':
-        return (
-          <FinancingApplicationDetailSection
-            application={selectedFinancingApplication}
-            canEditOperations={canEditOperations}
-            handleFinancingStatusUpdate={handleFinancingStatusUpdate}
-            formatCurrency={formatCurrency}
-            formatDate={formatDate}
-            onBack={handleBackToFinancingApplications}
-            isDarkMode={isDarkMode}
-          />
-        )
-      case 'approved-applications':
-        return (
-          <ApprovedApplicationsSection
-            applications={filteredFinancingApplications}
-            canEditOperations={canEditOperations}
-            handleFinancingStatusUpdate={handleFinancingStatusUpdate}
-            formatCurrency={formatCurrency}
-            onOpenApplication={handleOpenFinancingApplication}
-            isDarkMode={isDarkMode}
-          />
-        )
       case 'inventory':
         return (
           <InventorySection
@@ -2189,6 +2272,8 @@ const sidebarItems = useMemo(() => {
             models={models}
             variants={variants}
             currentUser={currentUser}
+            currentAccessRole={currentAccessRole}
+            inventoryChangeRequests={inventoryChangeRequests}
             isDarkMode={isDarkMode}
           />
         )
@@ -2224,6 +2309,8 @@ const sidebarItems = useMemo(() => {
             categories={categories}
             models={models}
             canEditOperations={canEditOperations}
+            currentUser={currentUser}
+            currentAccessRole={currentAccessRole}
             isDarkMode={isDarkMode}
           />
         )
@@ -2341,7 +2428,7 @@ const sidebarItems = useMemo(() => {
           isDarkMode={isDarkMode}
           onToggleTheme={toggleTheme}
           onToggleNotifications={handleToggleNotifications}
-          notificationCount={unreadChatCount}
+          notificationCount={unreadNotificationCount}
           adminName={adminName}
           consoleLabel={consoleLabel}
           onOpenProfile={handleProfileToggle}

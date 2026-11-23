@@ -50,8 +50,6 @@ export default function CustomerServiceBookingsPage({
   isDarkMode,
   onNavigateToShowroom,
   onNavigateToService,
-  onNavigateToFinancing,
-  onNavigateToFinancingStatus,
   onNavigateToMessages,
   onNavigateToProfile,
   onNavigateToServiceBookings,
@@ -185,8 +183,6 @@ export default function CustomerServiceBookingsPage({
         unreadNotifications={[]}
         onNavigateToShowroom={onNavigateToShowroom}
         onNavigateToService={onNavigateToService}
-        onNavigateToFinancing={onNavigateToFinancing}
-        onNavigateToFinancingStatus={onNavigateToFinancingStatus}
         onNavigateToMessages={onNavigateToMessages}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToServiceBookings={onNavigateToServiceBookings}

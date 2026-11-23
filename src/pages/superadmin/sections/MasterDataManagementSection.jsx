@@ -3,6 +3,7 @@ import { addDoc, collection, serverTimestamp, deleteDoc, doc, getDocs } from 'fi
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import { db } from '../../../firebase'
+import { logSystemAuditEvent } from '../../../services/auditLogService'
 import ConfirmationModal from '../components/ConfirmationModal'
 
 const collectionMap = {
@@ -17,6 +18,8 @@ export default function MasterDataManagementSection({
   categories = [],
   models = [],
   canEditOperations,
+  currentUser = null,
+  currentAccessRole = '',
   isDarkMode = true,
 }) {
   const [items, setItems] = useState([])
@@ -115,7 +118,19 @@ export default function MasterDataManagementSection({
         dataToAdd.modelId = selectedParentId
       }
 
-      await addDoc(collection(db, 'masterData', 'inventory', config.path), dataToAdd)
+      const docRef = await addDoc(collection(db, 'masterData', 'inventory', config.path), dataToAdd)
+
+      await logSystemAuditEvent({
+        module: 'Master Data',
+        action: 'MASTER_DATA_CREATED',
+        summary: `Added ${config.label.slice(0, -1)}: "${newItemName.trim()}"`,
+        targetType: 'masterData',
+        targetId: docRef.id,
+        targetName: newItemName.trim(),
+        newData: dataToAdd,
+        currentUser,
+        accessRole: currentAccessRole,
+      })
 
       setMessage({ type: 'success', text: `${config.label.slice(0, -1)} added successfully!` })
       setNewItemName('')
@@ -147,12 +162,23 @@ export default function MasterDataManagementSection({
   }
 
   const handleConfirmDelete = async () => {
-    const { itemId } = confirmModal
+    const { itemId, itemName } = confirmModal
     setConfirmModal({ open: false, itemId: null, itemName: '' })
 
     setIsLoading(true)
     try {
       await deleteDoc(doc(db, 'masterData', 'inventory', config.path, itemId))
+      await logSystemAuditEvent({
+        module: 'Master Data',
+        action: 'MASTER_DATA_DELETED',
+        summary: `Deleted ${config.label.slice(0, -1)}: "${itemName || itemId}"`,
+        targetType: 'masterData',
+        targetId: itemId,
+        targetName: itemName || itemId,
+        previousData: { name: itemName || '' },
+        currentUser,
+        accessRole: currentAccessRole,
+      })
       setMessage({ type: 'success', text: 'Item deleted successfully!' })
 
       // Reload items

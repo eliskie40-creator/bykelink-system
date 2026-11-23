@@ -17,12 +17,11 @@ const formatPrice = (value) => {
   }).format(Number.isFinite(amount) ? amount : 0)
 }
 
-export default function CustomerShowroomPage({ currentUser, onSignOut, onNavigateToProduct, onNavigateToService, onNavigateToFinancing, onNavigateToFinancingStatus, onNavigateToMessages, onNavigateToProfile, onNavigateToServiceBookings, onNavigateBack }) {
+export default function CustomerShowroomPage({ currentUser, onSignOut, onNavigateToProduct, onNavigateToService, onNavigateToMessages, onNavigateToProfile, onNavigateToServiceBookings, onNavigateBack }) {
   const [isDarkMode, setIsDarkMode] = useState(true)
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [unreadNotifications] = useState([
     { id: 1, title: 'New Inventory', message: 'Yamaha YZF-R1M now in stock', timestamp: 'Just now', read: false },
-    { id: 2, title: 'Financing Available', message: '0% APR financing up to 24 months', timestamp: '2 hours ago', read: true },
   ])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
@@ -247,8 +246,6 @@ export default function CustomerShowroomPage({ currentUser, onSignOut, onNavigat
         unreadNotifications={unreadNotifications}
         onNavigateToShowroom={onNavigateBack}
         onNavigateToService={onNavigateToService}
-        onNavigateToFinancing={onNavigateToFinancing}
-        onNavigateToFinancingStatus={onNavigateToFinancingStatus}
         onNavigateToMessages={onNavigateToMessages}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToServiceBookings={onNavigateToServiceBookings}
@@ -511,15 +508,13 @@ export default function CustomerShowroomPage({ currentUser, onSignOut, onNavigat
           <div>
             <p className="text-xs font-black uppercase tracking-[0.24em] text-red-600">BYKELINK</p>
             <p className="mt-3 max-w-xs text-sm text-slate-400 leading-relaxed">
-              Premium Yamaha motorcycles for Filipino riders with dedicated service support and financing options.
+              Premium Yamaha motorcycles for Filipino riders with dedicated showroom and service support.
             </p>
           </div>
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Information</p>
             <ul className="mt-3 space-y-2 text-sm text-slate-400">
               <li><a className="hover:text-red-600 transition">Showroom</a></li>
-              <li><button onClick={onNavigateToFinancing} className="hover:text-red-600 transition">Financing</button></li>
-              <li><button onClick={onNavigateToFinancingStatus} className="hover:text-red-600 transition">Track Status</button></li>
               <li><a className="hover:text-red-600 transition">Service</a></li>
               <li><a className="hover:text-red-600 transition">Support</a></li>
             </ul>

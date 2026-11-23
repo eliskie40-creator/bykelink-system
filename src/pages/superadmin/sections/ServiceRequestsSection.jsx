@@ -6,6 +6,7 @@ import SaveRoundedIcon from '@mui/icons-material/SaveRounded'
 import ChevronLeftRoundedIcon from '@mui/icons-material/ChevronLeftRounded'
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded'
 import useMechanicsPersonnel from '../../../hooks/useMechanicsPersonnel'
+import { logSystemAuditEvent } from '../../../services/auditLogService'
 import AssignMechanicModal from '../components/AssignMechanicModal'
 
 export default function ServiceRequestsSection({
@@ -16,6 +17,8 @@ export default function ServiceRequestsSection({
   formatDate,
   getStatusClasses,
   isDarkMode = true,
+  currentUser = null,
+  currentAccessRole = '',
   mechanics: _mechanics = [], // mechanics can be passed as prop, but default to []
 }) {
   // Fetch mechanics from Firestore
@@ -216,6 +219,25 @@ export default function ServiceRequestsSection({
         bookingEndMinutes: startMinutes + estimatedMinutes,
       })
 
+      await logSystemAuditEvent({
+        module: 'Service',
+        action: 'SERVICE_SCHEDULE_UPDATED',
+        summary: `Rescheduled booking ${scheduleModal.bookingId || scheduleModal.id} to ${formatScheduleDate(scheduleForm.date)} at ${bookingTime}`,
+        targetType: 'serviceBooking',
+        targetId: scheduleModal.id,
+        targetName: scheduleModal.customerName || scheduleModal.customer || scheduleModal.id,
+        previousData: {
+          bookingDateKey: scheduleModal.bookingDateKey || '',
+          bookingTime: scheduleModal.bookingTime || '',
+        },
+        newData: {
+          bookingDateKey: scheduleForm.date,
+          bookingTime,
+        },
+        currentUser,
+        accessRole: currentAccessRole,
+      })
+
       closeScheduleEditor()
     } finally {
       setIsScheduleSaving(false)
@@ -227,15 +249,28 @@ export default function ServiceRequestsSection({
     setAssignModalOpen(true)
   }
 
-  const handleAssignMechanic = (mechanicId) => {
+  const handleAssignMechanic = async (mechanicId) => {
     if (selectedRequest && mechanicId) {
       const selectedMechanic = mechanics.find((mechanic) => mechanic.id === mechanicId)
       const mechanicName = selectedMechanic?.name || selectedMechanic?.fullName || selectedMechanic?.email || mechanicId
 
-      handleCollectionUpdate('serviceBookings', selectedRequest.id, {
+      await handleCollectionUpdate('serviceBookings', selectedRequest.id, {
         status: 'In Progress',
         assignedTechnician: mechanicId,
         assignedTechnicianName: mechanicName,
+      })
+
+      await logSystemAuditEvent({
+        module: 'Service',
+        action: 'SERVICE_MECHANIC_ASSIGNED',
+        summary: `Assigned mechanic ${mechanicName} to booking ${selectedRequest.bookingId || selectedRequest.id} (Status: In Progress)`,
+        targetType: 'serviceBooking',
+        targetId: selectedRequest.id,
+        targetName: selectedRequest.customerName || selectedRequest.customer || selectedRequest.id,
+        previousData: { status: selectedRequest.status || 'Pending' },
+        newData: { status: 'In Progress', assignedTechnicianName: mechanicName },
+        currentUser,
+        accessRole: currentAccessRole,
       })
     }
     setAssignModalOpen(false)
@@ -353,7 +388,22 @@ export default function ServiceRequestsSection({
               {request.status === 'In Progress' && (
                 <button
                   className="w-full mt-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-2 text-sm transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-600"
-                  onClick={() => handleCollectionUpdate('serviceBookings', request.id, { status: 'Services Completed' })}
+                  onClick={async () => {
+                    await handleCollectionUpdate('serviceBookings', request.id, { status: 'Services Completed' })
+                    await logSystemAuditEvent({
+                      module: 'Service',
+                      action: 'SERVICE_COMPLETED',
+                      summary: `Marked service booking ${request.bookingId || request.id} as Services Completed`,
+                      targetType: 'serviceBooking',
+                      targetId: request.id,
+                      targetName: request.customerName || request.customer || request.id,
+                      previousData: { status: request.status || 'In Progress' },
+                      newData: { status: 'Services Completed' },
+                      amount: Number(request.cost ?? 0),
+                      currentUser,
+                      accessRole: currentAccessRole,
+                    })
+                  }}
                   disabled={!canEditOperations}
                 >
                   SERVICE COMPLETED

@@ -4,10 +4,10 @@ import DeleteForeverRoundedIcon from '@mui/icons-material/DeleteForeverRounded'
 import RestoreRoundedIcon from '@mui/icons-material/RestoreRounded'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import ConfirmationModal from '../components/ConfirmationModal'
+import AdminVerificationModal from '../components/AdminVerificationModal'
 import { db } from '../../../firebase'
+import { logSystemAuditEvent } from '../../../services/auditLogService'
 import './InventoryDeleteArchivedSection.css'
-
-const normalizeText = (value = '') => String(value).trim().toLowerCase()
 
 export default function InventoryDeleteArchivedSection({
   deletedItems = [],
@@ -15,9 +15,11 @@ export default function InventoryDeleteArchivedSection({
   handleCollectionUpdate,
   formatDate,
   isDarkMode = true,
+  currentUser = null,
   currentAccessRole = null,
 }) {
   const [confirmModal, setConfirmModal] = useState({ open: false, action: null, itemId: null, itemName: '' })
+  const [adminVerifyModal, setAdminVerifyModal] = useState({ open: false, itemId: null, itemName: '' })
   const [isDeleting, setIsDeleting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 8
@@ -26,13 +28,15 @@ export default function InventoryDeleteArchivedSection({
   const isSuperAdmin = currentAccessRole && String(currentAccessRole).toLowerCase() === 'superadmin'
   const isAdmin = currentAccessRole && String(currentAccessRole).toLowerCase() === 'admin'
   const canShowDeleteButton = canDeletePermanently || isAdmin || isSuperAdmin
-  const canShowRestoreButton = isSuperAdmin
-  
-  const normalizedSearchTerm = ''
+  const canShowRestoreButton = isSuperAdmin || isAdmin
 
   const filteredItems = useMemo(() => {
     return deletedItems.filter((item) => {
-      return true
+      if (item.recordType === 'inventory') return true
+      if (item.originalCollection || (item.email && !item.category && !item.model)) {
+        return false
+      }
+      return Boolean(item.name || item.category || item.model)
     })
   }, [deletedItems])
 
@@ -52,7 +56,7 @@ export default function InventoryDeleteArchivedSection({
     if (!canShowDeleteButton) {
       return
     }
-    setConfirmModal({ open: true, action: 'permanent-delete', itemId, itemName })
+    setAdminVerifyModal({ open: true, itemId, itemName })
   }
 
   const handleRestore = (itemId, itemName) => {
@@ -62,26 +66,74 @@ export default function InventoryDeleteArchivedSection({
     setConfirmModal({ open: true, action: 'restore', itemId, itemName })
   }
 
+  const handleConfirmPermanentDelete = async ({ verificationNote, verificationMethod }) => {
+    const { itemId, itemName } = adminVerifyModal
+    setIsDeleting(true)
+    try {
+      const targetItem = deletedItems.find((item) => item.id === itemId)
+      await deleteDoc(doc(db, 'deleteArchived', itemId))
+      await logSystemAuditEvent({
+        module: 'Inventory',
+        action: 'PRODUCT_PERMANENTLY_DELETED',
+        summary: `Verified and permanently deleted archived product "${itemName || itemId}"`,
+        targetType: 'inventory',
+        targetId: itemId,
+        targetName: itemName || itemId,
+        previousData: targetItem ? { name: targetItem.name, category: targetItem.category, stock: targetItem.stock } : null,
+        currentUser,
+        accessRole: currentAccessRole,
+        verifiedBy: {
+          uid: currentUser?.uid || '',
+          email: currentUser?.email || '',
+          name: currentUser?.displayName || currentUser?.email || '',
+          role: currentAccessRole || '',
+          method: verificationMethod,
+        },
+        metadata: { verificationNote },
+      })
+      setAdminVerifyModal({ open: false, itemId: null, itemName: '' })
+      handleCollectionUpdate()
+    } catch (error) {
+      console.error('Error:', error)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const handleConfirmDelete = async () => {
-    const { itemId, action } = confirmModal
+    const { itemId, itemName } = confirmModal
     setConfirmModal({ open: false, action: null, itemId: null, itemName: '' })
 
     setIsDeleting(true)
     try {
-      if (action === 'restore') {
-        // Restore item to inventory
-        const itemToRestore = deletedItems.find(item => item.id === itemId)
-        if (itemToRestore) {
-          const { id, ...itemData } = itemToRestore
-          await setDoc(doc(db, 'inventory', id), {
-            ...itemData,
-            updatedAt: serverTimestamp(),
-          })
-          await deleteDoc(doc(db, 'deleteArchived', itemId))
-        }
-      } else {
-        // Permanent delete
+      const itemToRestore = deletedItems.find((item) => item.id === itemId)
+      if (itemToRestore) {
+        const {
+          id,
+          deletedAt: _deletedAt,
+          deletedBy: _deletedBy,
+          verifiedBy: _verifiedBy,
+          verifiedAt: _verifiedAt,
+          deletionReason: _deletionReason,
+          recordType: _recordType,
+          ...itemData
+        } = itemToRestore
+        await setDoc(doc(db, 'inventory', id), {
+          ...itemData,
+          updatedAt: serverTimestamp(),
+        })
         await deleteDoc(doc(db, 'deleteArchived', itemId))
+        await logSystemAuditEvent({
+          module: 'Inventory',
+          action: 'PRODUCT_RESTORED',
+          summary: `Restored archived product "${itemName || itemToRestore.name || itemId}" back to inventory`,
+          targetType: 'inventory',
+          targetId: itemId,
+          targetName: itemName || itemToRestore.name || itemId,
+          newData: { name: itemToRestore.name, stock: itemToRestore.stock ?? 0 },
+          currentUser,
+          accessRole: currentAccessRole,
+        })
       }
       handleCollectionUpdate()
     } catch (error) {
@@ -114,9 +166,8 @@ export default function InventoryDeleteArchivedSection({
               paginatedItems.map((item) => (
                 <div
                   key={item.id}
-                  className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${
-                    !isDarkMode ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-white/4 border-white/10 hover:bg-white/8'
-                  }`}
+                  className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${!isDarkMode ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-white/4 border-white/10 hover:bg-white/8'
+                    }`}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
@@ -143,11 +194,10 @@ export default function InventoryDeleteArchivedSection({
                         type="button"
                         onClick={() => handleRestore(item.id, item.name)}
                         disabled={isDeleting}
-                        className={`inline-flex items-center justify-center h-8 w-8 rounded-full transition-colors shrink-0 disabled:opacity-60 ${
-                          !isDarkMode
-                            ? 'text-emerald-600 hover:bg-emerald-50'
-                            : 'text-emerald-400 hover:bg-emerald-950/30'
-                        }`}
+                        className={`inline-flex items-center justify-center h-8 w-8 rounded-full transition-colors shrink-0 disabled:opacity-60 ${!isDarkMode
+                          ? 'text-emerald-600 hover:bg-emerald-50'
+                          : 'text-emerald-400 hover:bg-emerald-950/30'
+                          }`}
                         title="Restore this item to inventory"
                       >
                         <RestoreRoundedIcon sx={{ fontSize: 18 }} />
@@ -158,11 +208,10 @@ export default function InventoryDeleteArchivedSection({
                         type="button"
                         onClick={() => handlePermanentDelete(item.id, item.name)}
                         disabled={isDeleting}
-                        className={`inline-flex items-center justify-center h-8 w-8 rounded-full transition-colors shrink-0 disabled:opacity-60 ${
-                          !isDarkMode
-                            ? 'text-red-600 hover:bg-red-50'
-                            : 'text-red-400 hover:bg-red-950/30'
-                        }`}
+                        className={`inline-flex items-center justify-center h-8 w-8 rounded-full transition-colors shrink-0 disabled:opacity-60 ${!isDarkMode
+                          ? 'text-red-600 hover:bg-red-50'
+                          : 'text-red-400 hover:bg-red-950/30'
+                          }`}
                         title="Permanently delete this item"
                       >
                         <DeleteForeverRoundedIcon sx={{ fontSize: 18 }} />
@@ -182,7 +231,7 @@ export default function InventoryDeleteArchivedSection({
         {totalPages > 1 && filteredItems.length > 0 && (
           <div className="mt-4 flex items-center justify-between text-[11px] text-white/40">
             <span>Showing {startIndex + 1}-{Math.min(endIndex, filteredItems.length)} of {filteredItems.length} items</span>
-            
+
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
@@ -191,7 +240,7 @@ export default function InventoryDeleteArchivedSection({
               >
                 ‹ Prev
               </button>
-              
+
               <div className="flex gap-1">
                 {Array.from({ length: totalPages }).map((_, i) => {
                   const pageNum = i + 1
@@ -206,7 +255,7 @@ export default function InventoryDeleteArchivedSection({
                   )
                 })}
               </div>
-              
+
               <button
                 onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
@@ -240,22 +289,25 @@ export default function InventoryDeleteArchivedSection({
 
       <ConfirmationModal
         open={confirmModal.open}
-        title={
-          confirmModal.action === 'restore' 
-            ? 'Restore Item to Inventory' 
-            : 'Permanently Delete Item'
-        }
-        message={
-          confirmModal.action === 'restore'
-            ? `Are you sure you want to restore "${confirmModal.itemName}" back to the inventory? It will be available immediately.`
-            : `Are you sure you want to permanently delete "${confirmModal.itemName}"? This action cannot be undone.`
-        }
-        confirmText={confirmModal.action === 'restore' ? 'Yes, Restore' : 'Delete Permanently'}
+        title="Restore Item to Inventory"
+        message={`Are you sure you want to restore "${confirmModal.itemName}" back to the inventory? It will be available immediately.`}
+        confirmText="Yes, Restore"
         cancelText="Cancel"
-        isDangerous={confirmModal.action !== 'restore'}
+        isDangerous={false}
         isDarkMode={isDarkMode}
         onConfirm={handleConfirmDelete}
         onCancel={() => setConfirmModal({ open: false, action: null, itemId: null, itemName: '' })}
+      />
+
+      <AdminVerificationModal
+        open={adminVerifyModal.open}
+        mode="permanent-delete"
+        itemName={adminVerifyModal.itemName}
+        currentUser={currentUser}
+        isDarkMode={isDarkMode}
+        isLoading={isDeleting}
+        onVerify={handleConfirmPermanentDelete}
+        onCancel={() => setAdminVerifyModal({ open: false, itemId: null, itemName: '' })}
       />
     </section>
   )

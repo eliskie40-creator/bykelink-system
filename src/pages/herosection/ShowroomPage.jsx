@@ -391,7 +391,7 @@ export default function ShowroomPage({
                         onClick={onNavigateLogin}
                         className="inline-flex w-full items-center justify-between gap-3 rounded-2xl border border-red-500/50 bg-red-600/10 px-5 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-red-200 transition hover:bg-red-600 hover:text-white"
                       >
-                        <span>Apply for Financing</span>
+                        <span>Sign In to Inquire</span>
                         <ArrowForwardRoundedIcon sx={{ fontSize: 18 }} />
                       </button>
                     </div>

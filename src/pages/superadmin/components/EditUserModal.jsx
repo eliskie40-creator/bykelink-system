@@ -99,7 +99,9 @@ export default function EditUserModal({
             <div className="edit-user-modal-section">
               <p className="edit-user-modal-section-title">Menu Access</p>
               <div className="edit-user-access-checkboxes">
-                {sidebarItems.map((item) => (
+                {sidebarItems
+                  .filter((item) => item.id !== 'transaction-history')
+                  .map((item) => (
                   <label key={item.id} className="edit-user-access-checkbox">
                     <input
                       type="checkbox"

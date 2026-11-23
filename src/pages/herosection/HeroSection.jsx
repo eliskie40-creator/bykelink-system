@@ -85,7 +85,7 @@ export default function HeroSection({
 
   const modalContents = { privacy: privacyContent, terms: termsContent }
   const [isLoadingComplete, setIsLoadingComplete] = useState(false)
-  const [financingApplications, setFinancingApplications] = useState(0)
+  const [showroomUnitsCount, setShowroomUnitsCount] = useState(0)
   const [servicesCompleted, setServicesCompleted] = useState(0)
   const [serviceRating, setServiceRating] = useState(0)
   const [liveSpareParts, setLiveSpareParts] = useState([])
@@ -176,10 +176,10 @@ export default function HeroSection({
       animate()
     }
 
-    animateCounter(financingApplications, setFinancingApplications, 2000)
+    animateCounter(showroomUnitsCount, setShowroomUnitsCount, 2000)
     animateCounter(servicesCompleted, setServicesCompleted, 2000)
     animateCounter(4.9, setServiceRating, 2000)
-  }, [isLoadingComplete, financingApplications, servicesCompleted])
+  }, [isLoadingComplete, showroomUnitsCount, servicesCompleted])
 
   // (Removed) Fetch popular categories — showroom was removed so categories not used
 
@@ -198,45 +198,27 @@ export default function HeroSection({
           ...doc.data(),
         }))
 
-        const showroomItems = items
+        const allShowroomItems = items
           .filter((item) => item.category !== 'Spare Parts')
           .filter((item) => item.showInShowroom !== false && item.publishedToShowroom !== false)
-          .slice(0, 6)
+
+        const showroomItems = allShowroomItems.slice(0, 6)
 
         const spareParts = items
           .filter((item) => item.category === 'Spare Parts')
           .slice(0, 8)
 
+        setShowroomUnitsCount(allShowroomItems.length)
         setShowroomInventory(showroomItems)
         setLiveSpareParts(spareParts)
         setIsSparePartsLoading(false)
       },
       (error) => {
         console.error('Unable to load hero inventory', error)
+        setShowroomUnitsCount(0)
         setShowroomInventory([])
         setLiveSpareParts([])
         setIsSparePartsLoading(false)
-      },
-    )
-
-    return () => unsubscribe()
-  }, [])
-
-  // Fetch completed financing applications count from Firestore
-  useEffect(() => {
-    const q = query(
-      collection(db, 'financingApplications'),
-      where('status', '==', 'completed')
-    )
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        setFinancingApplications(snapshot.docs.length)
-      },
-      (error) => {
-        console.error('Unable to load financing applications count', error)
-        setFinancingApplications(0)
       },
     )
 
@@ -525,9 +507,9 @@ useEffect(() => {
 
             <div className="mt-6 grid gap-3 sm:mt-8 sm:grid-cols-3 lg:max-w-4xl">
               <div className="px-5 py-4 text-center">
-                <div className="text-3xl font-black text-white font-['Epilogue']">{financingApplications}+</div>
+                <div className="text-3xl font-black text-white font-['Epilogue']">{showroomUnitsCount}+</div>
                 <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-white">
-                  Financing Applications
+                  Showroom Units
                 </div>
               </div>
               <div className="px-5 py-4 text-center">
@@ -812,7 +794,7 @@ useEffect(() => {
                 </h2>
                 <p className="mb-8 max-w-xl text-sm text-slate-300 sm:text-base">
                   Drop by our flagship branch for test-ride assistance, inventory walk-through,
-                  and financing guidance from our showroom team.
+                  and unit guidance from our showroom team.
                 </p>
 
                 <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -912,7 +894,7 @@ useEffect(() => {
                     Built for riders who expect premium service.
                   </h2>
                   <p className="mb-6 max-w-3xl text-neutral-300 sm:text-lg">
-                    BYKELINK delivers showroom guidance, after-sales support, financing help, and
+                    BYKELINK delivers showroom guidance, after-sales support, genuine parts, and
                     a modern digital experience in one place.
                   </p>
 
